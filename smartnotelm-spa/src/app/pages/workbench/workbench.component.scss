@@ -15,6 +15,13 @@
   background: #f6f6f6;
 }
 
+.top-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
 .search-row {
   flex: 1;
   min-width: 200px;
@@ -203,6 +210,20 @@
 
 .primary:hover {
   filter: brightness(1.05);
+}
+
+.secondary {
+  padding: 0.45rem 0.9rem;
+  background: #fff;
+  color: #333;
+  border: 1px solid #bbb;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.secondary:hover {
+  background: #f0f0f0;
 }
 
 .modal-backdrop {

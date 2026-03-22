@@ -74,6 +74,11 @@ export class WorkbenchComponent implements OnInit {
 
   deleteConfirmId: string | null = null;
 
+  newGroupModalOpen = false;
+  newGroupName = '';
+  /** null — новая группа на верхнем уровне. */
+  newGroupParentId: string | null = null;
+
   ngOnInit(): void {
     this.loadWorkbenchPrefs();
     this.search$
@@ -343,6 +348,30 @@ export class WorkbenchComponent implements OnInit {
     this.api.getNote(id).subscribe((d) => (this.selectedDetail = d));
   }
 
+  openNewGroupModal(): void {
+    this.newGroupName = 'Новая группа';
+    this.newGroupParentId = null;
+    this.newGroupModalOpen = true;
+  }
+
+  closeNewGroupModal(): void {
+    this.newGroupModalOpen = false;
+  }
+
+  saveNewGroup(): void {
+    const name = this.newGroupName.trim();
+    if (!name) {
+      return;
+    }
+    this.api.createGroup(name, this.newGroupParentId).subscribe({
+      next: () => {
+        this.newGroupModalOpen = false;
+        this.reload();
+      },
+      error: () => window.alert('Не удалось создать группу.'),
+    });
+  }
+
   openAddModal(): void {
     this.modalEditId = null;
     const raw = localStorage.getItem(DRAFT_NEW);
@@ -483,6 +512,19 @@ export class WorkbenchComponent implements OnInit {
 
   flatGroups(): { id: string | null; label: string }[] {
     const acc: { id: string | null; label: string }[] = [{ id: null, label: '(без группы)' }];
+    const walk = (nodes: GroupDto[], prefix: string) => {
+      for (const g of nodes) {
+        acc.push({ id: g.id, label: prefix + g.name });
+        walk(g.children, prefix + g.name + ' / ');
+      }
+    };
+    walk(this.groups, '');
+    return acc;
+  }
+
+  /** Родитель для новой группы: корень или любая существующая группа. */
+  groupParentOptionsForNewGroup(): { id: string | null; label: string }[] {
+    const acc: { id: string | null; label: string }[] = [{ id: null, label: '(корень)' }];
     const walk = (nodes: GroupDto[], prefix: string) => {
       for (const g of nodes) {
         acc.push({ id: g.id, label: prefix + g.name });

@@ -31,7 +31,10 @@
         </label>
       </div>
     </div>
-    <button type="button" class="primary" (click)="openAddModal()">Добавить заметку</button>
+    <div class="top-actions">
+      <button type="button" class="secondary" (click)="openNewGroupModal()">Добавить группу</button>
+      <button type="button" class="primary" (click)="openAddModal()">Добавить заметку</button>
+    </div>
   </header>
 
   <div class="toolbar">
@@ -168,6 +171,29 @@
     <div class="modal-actions">
       <button type="button" (click)="closeModal(false)">Отмена</button>
       <button type="button" class="primary" (click)="saveModal()">Сохранить</button>
+    </div>
+  </div>
+}
+
+@if (newGroupModalOpen) {
+  <div class="modal-backdrop" (click)="closeNewGroupModal()"></div>
+  <div class="modal" role="dialog" aria-modal="true">
+    <h2>Новая группа</h2>
+    <label>
+      Имя
+      <input type="text" [(ngModel)]="newGroupName" name="newGroupName" />
+    </label>
+    <label>
+      Родительская группа
+      <select [(ngModel)]="newGroupParentId" name="newGroupParentId">
+        @for (g of groupParentOptionsForNewGroup(); track g.id) {
+          <option [ngValue]="g.id">{{ g.label }}</option>
+        }
+      </select>
+    </label>
+    <div class="modal-actions">
+      <button type="button" (click)="closeNewGroupModal()">Отмена</button>
+      <button type="button" class="primary" (click)="saveNewGroup()">Создать</button>
     </div>
   </div>
 }
