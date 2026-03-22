@@ -1,0 +1,176 @@
+<div class="layout">
+  <header class="top">
+    <div class="search-row">
+      <input
+        type="search"
+        class="search-input"
+        placeholder="Поиск по заметкам…"
+        [value]="searchQuery"
+        (input)="onSearchInput($any($event.target).value)"
+      />
+      <select [(ngModel)]="searchMode" (ngModelChange)="runSearch(searchQuery.trim())">
+        <option value="text">Текст</option>
+        <option value="semantic">Смысл</option>
+        <option value="both">Оба</option>
+      </select>
+      @if (searchHits.length > 0) {
+        <ul class="search-hits">
+          @for (h of searchHits; track h.noteId) {
+            <li>
+              <button type="button" (click)="pickSearchHit(h.noteId)">{{ h.title }}</button>
+            </li>
+          }
+        </ul>
+      }
+    </div>
+    <button type="button" class="primary" (click)="openAddModal()">Добавить заметку</button>
+  </header>
+
+  <div class="toolbar">
+    <label>
+      Вид
+      <select [(ngModel)]="viewMode" (ngModelChange)="onViewSortChange()">
+        <option value="by_group">По группам</option>
+        <option value="by_tag">По тегам</option>
+        <option value="flat">Плоский список</option>
+      </select>
+    </label>
+    <label>
+      Сортировка
+      <select [(ngModel)]="sortField" (ngModelChange)="onViewSortChange()">
+        <option value="created_at">По дате добавления</option>
+        <option value="due_at">По дате исполнения</option>
+      </select>
+    </label>
+    <label>
+      Порядок
+      <select [(ngModel)]="sortOrder" (ngModelChange)="onViewSortChange()">
+        <option value="asc">По возрастанию</option>
+        <option value="desc">По убыванию</option>
+      </select>
+    </label>
+    <label class="chk">
+      <input type="checkbox" [(ngModel)]="onlyTodo" (ngModelChange)="onOnlyTodoChange()" />
+      Только TODO
+    </label>
+    <label class="chk">
+      <input type="checkbox" [checked]="showBodyPreview" (change)="togglePreview($any($event.target).checked)" />
+      Превью тела под заголовком
+    </label>
+  </div>
+
+  <div class="main">
+    <aside class="tree-panel">
+      <ng-template #treeTpl let-nodes>
+        <ul class="tree-list">
+          @for (n of nodes; track n.id) {
+            <li>
+              @if (n.kind === 'group') {
+                <div class="group-head">{{ n.title }}</div>
+                <div class="nested">
+                  <ng-container *ngTemplateOutlet="treeTpl; context: { $implicit: n.children }"></ng-container>
+                </div>
+              } @else {
+                <div
+                  class="note-row"
+                  [class.active]="selectedId === n.id"
+                  (click)="selectNote(n.id!)"
+                >
+                  <span class="note-title">{{ n.title }}</span>
+                  @if (showBodyPreview && n.preview) {
+                    <div class="note-preview">{{ n.preview }}</div>
+                  }
+                  <span class="note-actions">
+                    <button
+                      type="button"
+                      class="icon-btn"
+                      title="Редактировать"
+                      (click)="$event.stopPropagation(); openEditModal(n.note!)"
+                    >
+                      ✎
+                    </button>
+                    <button
+                      type="button"
+                      class="icon-btn danger"
+                      title="Удалить"
+                      (click)="$event.stopPropagation(); requestDelete(n.id!)"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                </div>
+              }
+            </li>
+          }
+        </ul>
+      </ng-template>
+      <ng-container *ngTemplateOutlet="treeTpl; context: { $implicit: tree }"></ng-container>
+    </aside>
+
+    <section class="detail">
+      @if (selectedDetail) {
+        <h1>{{ selectedDetail.title || '(без заголовка)' }}</h1>
+        <div class="meta">
+          @if (selectedDetail.groupName) {
+            <span>Группа: {{ selectedDetail.groupName }}</span>
+          }
+          @if (selectedDetail.tagNames.length) {
+            <span>Теги: {{ selectedDetail.tagNames.join(', ') }}</span>
+          }
+          @if (selectedDetail.dueAt) {
+            <span>Срок: {{ selectedDetail.dueAt | date: 'short' }}</span>
+          }
+        </div>
+        <pre class="body">{{ selectedDetail.body }}</pre>
+      } @else {
+        <p class="empty">Выберите заметку слева или создайте новую.</p>
+      }
+    </section>
+  </div>
+</div>
+
+@if (modalOpen) {
+  <div class="modal-backdrop" (click)="closeModal(false)"></div>
+  <div class="modal" role="dialog" aria-modal="true">
+    <h2>{{ modalEditId ? 'Редактировать заметку' : 'Новая заметка' }}</h2>
+    <label>Заголовок<input [(ngModel)]="modalTitle" /></label>
+    <label>Тело<textarea rows="8" [(ngModel)]="modalBody"></textarea></label>
+    <label>
+      Группа
+      <select [(ngModel)]="modalGroupId">
+        @for (g of flatGroups(); track g.id) {
+          <option [ngValue]="g.id">{{ g.label }}</option>
+        }
+      </select>
+    </label>
+    <label>Срок (TODO)<input type="datetime-local" [(ngModel)]="modalDue" /></label>
+    <fieldset class="tags-field">
+      <legend>Теги</legend>
+      @for (t of tags; track t.id) {
+        <label class="tag-opt">
+          <input
+            type="checkbox"
+            [checked]="tagChecked(t.id)"
+            (change)="toggleModalTag(t.id, $any($event.target).checked)"
+          />
+          <span [class.system-tag]="t.system">{{ t.name }}</span>
+        </label>
+      }
+    </fieldset>
+    <div class="modal-actions">
+      <button type="button" (click)="closeModal(false)">Отмена</button>
+      <button type="button" class="primary" (click)="saveModal()">Сохранить</button>
+    </div>
+  </div>
+}
+
+@if (deleteConfirmId) {
+  <div class="modal-backdrop" (click)="cancelDelete()"></div>
+  <div class="modal small" role="dialog">
+    <p>Удалить эту заметку?</p>
+    <div class="modal-actions">
+      <button type="button" (click)="cancelDelete()">Нет</button>
+      <button type="button" class="danger" (click)="confirmDelete()">Да, удалить</button>
+    </div>
+  </div>
+}

@@ -1,0 +1,302 @@
+.layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  font-family: system-ui, sans-serif;
+}
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #ccc;
+  background: #f6f6f6;
+}
+
+.search-row {
+  position: relative;
+  flex: 1;
+  min-width: 200px;
+  max-width: 520px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+}
+
+.search-hits {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  top: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: #fff;
+  border: 1px solid #ccc;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
+  max-height: 240px;
+  overflow: auto;
+}
+
+.search-hits button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.search-hits button:hover {
+  background: #eef;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.toolbar label {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.toolbar .chk input {
+  margin: 0;
+}
+
+.main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.tree-panel {
+  width: min(38%, 420px);
+  min-width: 220px;
+  overflow: auto;
+  border-right: 1px solid #ddd;
+  padding: 0.5rem;
+  background: #fafafa;
+}
+
+.tree-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nested {
+  padding-left: 0.85rem;
+  border-left: 1px solid #e8e8e8;
+  margin-left: 0.25rem;
+}
+
+.group-head {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #444;
+  padding: 0.35rem 0;
+}
+
+.note-row {
+  position: relative;
+  padding: 0.35rem 2.5rem 0.35rem 0.25rem;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.note-row:hover {
+  background: #ececec;
+}
+
+.note-row.active {
+  background: #dde7ff;
+}
+
+.note-title {
+  display: block;
+  font-size: 0.95rem;
+}
+
+.note-preview {
+  font-size: 0.78rem;
+  color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.note-actions {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 0.15rem;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.note-row:hover .note-actions {
+  opacity: 1;
+}
+
+.icon-btn {
+  border: none;
+  background: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0.1rem 0.35rem;
+  line-height: 1;
+  box-shadow: 0 0 0 1px #ccc;
+}
+
+.icon-btn.danger:hover {
+  background: #fee;
+}
+
+.detail {
+  flex: 1;
+  overflow: auto;
+  padding: 1rem 1.25rem;
+}
+
+.detail h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.35rem;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+  color: #555;
+  margin-bottom: 1rem;
+}
+
+.body {
+  white-space: pre-wrap;
+  font-family: inherit;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.empty {
+  color: #888;
+  margin-top: 2rem;
+}
+
+.primary {
+  padding: 0.45rem 0.9rem;
+  background: #1a5fb4;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.primary:hover {
+  filter: brightness(1.05);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 35%);
+  z-index: 100;
+}
+
+.modal {
+  position: fixed;
+  z-index: 101;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  padding: 1.25rem 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 25%);
+  min-width: min(92vw, 480px);
+  max-height: 90vh;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.modal.small {
+  min-width: min(92vw, 360px);
+}
+
+.modal h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.15rem;
+}
+
+.modal label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.modal input[type='text'],
+.modal input[type='search'],
+.modal input[type='datetime-local'],
+.modal select,
+.modal textarea {
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+}
+
+.tags-field {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  margin: 0;
+}
+
+.tag-opt {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.2rem 0;
+}
+
+.system-tag {
+  font-weight: 600;
+  color: #a50;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+button.danger {
+  background: #c22;
+  color: #fff;
+  border: none;
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+}

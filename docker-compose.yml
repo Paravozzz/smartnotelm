@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: smartnotelm
+      POSTGRES_PASSWORD: smartnotelm
+      POSTGRES_DB: smartnotelm
+    ports:
+      - "5433:5432"
+    volumes:
+      - smartnotelm_pgdata:/var/lib/postgresql/data
+
+volumes:
+  smartnotelm_pgdata:
