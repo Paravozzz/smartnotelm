@@ -31,12 +31,23 @@ public interface NoteRepository extends JpaRepository<Note, UUID> {
   @Query(
       value =
           """
-          SELECT n.id, ts_rank(n.search_vector, plainto_tsquery('simple', :q)) AS rank
+          SELECT n.id, ts_rank(n.search_vector, to_tsquery('simple', :tsQuery)) AS rank
           FROM notes n
-          WHERE n.search_vector @@ plainto_tsquery('simple', :q)
+          WHERE n.search_vector @@ to_tsquery('simple', :tsQuery)
           ORDER BY rank DESC
           LIMIT :limit
           """,
       nativeQuery = true)
-  List<Object[]> searchIdsByFts(@Param("q") String q, @Param("limit") int limit);
+  List<Object[]> searchIdsByFts(@Param("tsQuery") String tsQuery, @Param("limit") int limit);
+
+  @Query(
+      value =
+          """
+          SELECT n.id FROM notes n
+          WHERE n.title ILIKE :pattern ESCAPE '\\' OR n.body ILIKE :pattern ESCAPE '\\'
+          ORDER BY n.updated_at DESC
+          LIMIT :limit
+          """,
+      nativeQuery = true)
+  List<UUID> searchIdsByIlike(@Param("pattern") String pattern, @Param("limit") int limit);
 }

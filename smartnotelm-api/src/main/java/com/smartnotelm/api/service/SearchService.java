@@ -4,7 +4,9 @@ import com.smartnotelm.api.config.AppProperties;
 import com.smartnotelm.api.domain.Note;
 import com.smartnotelm.api.repo.NoteRepository;
 import com.smartnotelm.api.search.EmbeddingClient;
+import com.smartnotelm.api.search.IlikePatternUtil;
 import com.smartnotelm.api.search.PgVectorUtil;
+import com.smartnotelm.api.search.TsQueryUtil;
 import com.smartnotelm.api.search.VectorSearchDao;
 import com.smartnotelm.api.web.dto.SearchResultDto;
 import java.util.ArrayList;
@@ -36,25 +38,67 @@ public class SearchService {
       return List.of();
     }
     String m = mode == null ? "both" : mode.toLowerCase();
-    List<UUID> fts = List.of();
+    List<UUID> textIds = List.of();
     List<UUID> vec = List.of();
     if ("text".equals(m) || "both".equals(m)) {
-      fts = ftsIds(q);
+      textIds = textSearchIds(q);
     }
     if (("semantic".equals(m) || "both".equals(m)) && appProperties.embeddings().enabled()) {
       vec = vectorIds(q);
     }
-    if ("both".equals(m) && !fts.isEmpty() && !vec.isEmpty()) {
-      return mergeRrf(fts, vec);
+    if ("both".equals(m) && !textIds.isEmpty() && !vec.isEmpty()) {
+      return mergeRrf(textIds, vec);
     }
-    if ("semantic".equals(m) || ("both".equals(m) && fts.isEmpty())) {
+    if ("semantic".equals(m) || ("both".equals(m) && textIds.isEmpty())) {
       return toResults(vec, "semantic");
     }
-    return toResults(fts, "text");
+    return toResults(textIds, "text");
+  }
+
+  /** Full-text (prefix tsquery) + substring ILIKE on title/body, merged by RRF. */
+  private List<UUID> textSearchIds(String q) {
+    List<UUID> fts = ftsIds(q);
+    List<UUID> ilike = ilikeIds(q);
+    return rrfMergeIds(fts, ilike);
+  }
+
+  private List<UUID> ilikeIds(String q) {
+    String trimmed = q.trim();
+    if (trimmed.isEmpty()) {
+      return List.of();
+    }
+    String pattern = IlikePatternUtil.substringPattern(trimmed);
+    return noteRepository.searchIdsByIlike(pattern, LIMIT);
+  }
+
+  private List<UUID> rrfMergeIds(List<UUID> a, List<UUID> b) {
+    if (a.isEmpty()) {
+      return b;
+    }
+    if (b.isEmpty()) {
+      return a;
+    }
+    Map<UUID, Double> score = new HashMap<>();
+    for (int i = 0; i < a.size(); i++) {
+      score.merge(a.get(i), 1.0 / (RRF_K + i + 1), Double::sum);
+    }
+    for (int i = 0; i < b.size(); i++) {
+      score.merge(b.get(i), 1.0 / (RRF_K + i + 1), Double::sum);
+    }
+    Set<UUID> order = new LinkedHashSet<>();
+    order.addAll(a);
+    order.addAll(b);
+    return order.stream()
+        .sorted((x, y) -> Double.compare(score.getOrDefault(y, 0d), score.getOrDefault(x, 0d)))
+        .toList();
   }
 
   private List<UUID> ftsIds(String q) {
-    List<Object[]> rows = noteRepository.searchIdsByFts(q.trim(), LIMIT);
+    String tsq = TsQueryUtil.prefixTsQuery(q);
+    if (tsq.isEmpty()) {
+      return List.of();
+    }
+    List<Object[]> rows = noteRepository.searchIdsByFts(tsq, LIMIT);
     List<UUID> ids = new ArrayList<>();
     for (Object[] row : rows) {
       ids.add((UUID) row[0]);
@@ -74,10 +118,10 @@ public class SearchService {
     }
   }
 
-  private List<SearchResultDto> mergeRrf(List<UUID> fts, List<UUID> vec) {
+  private List<SearchResultDto> mergeRrf(List<UUID> textIds, List<UUID> vec) {
     Map<UUID, Double> score = new HashMap<>();
-    for (int i = 0; i < fts.size(); i++) {
-      UUID id = fts.get(i);
+    for (int i = 0; i < textIds.size(); i++) {
+      UUID id = textIds.get(i);
       score.merge(id, 1.0 / (RRF_K + i + 1), Double::sum);
     }
     for (int i = 0; i < vec.size(); i++) {
@@ -85,7 +129,7 @@ public class SearchService {
       score.merge(id, 1.0 / (RRF_K + i + 1), Double::sum);
     }
     Set<UUID> order = new LinkedHashSet<>();
-    order.addAll(fts);
+    order.addAll(textIds);
     order.addAll(vec);
     List<UUID> sorted =
         order.stream().sorted((a, b) -> Double.compare(score.getOrDefault(b, 0d), score.getOrDefault(a, 0d))).toList();
