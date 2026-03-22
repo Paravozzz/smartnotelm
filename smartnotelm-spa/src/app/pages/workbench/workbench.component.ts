@@ -1,8 +1,8 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { forkJoin, Subject } from 'rxjs';
-import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
+import { forkJoin, Observable, of, Subject } from 'rxjs';
+import { debounceTime, distinctUntilChanged, map, switchMap } from 'rxjs/operators';
 import { GroupDto, NoteDetail, NoteSummary, NoteWrite, TagDto, TODO_TAG_ID } from '../../models/models';
 import { ApiService } from '../../services/api.service';
 
@@ -15,8 +15,22 @@ interface TreeNode {
   note?: NoteSummary;
 }
 
+/** Совместимость: раньше превью хранилось отдельно. */
 const LS_PREVIEW = 'tree.showBodyPreview';
+const LS_WORKBENCH_UI = 'workbench.ui';
 const DRAFT_NEW = 'draft:new-note';
+
+interface WorkbenchUiPrefs {
+  viewMode: 'by_group' | 'by_tag' | 'flat';
+  sortField: 'created_at' | 'due_at';
+  sortOrder: 'asc' | 'desc';
+  onlyTodo: boolean;
+  showBodyPreview: boolean;
+  searchText: boolean;
+  searchSemantic: boolean;
+}
+/** Задержка перед запросом поиска после остановки ввода (мс). */
+const SEARCH_DEBOUNCE_MS = 300;
 
 @Component({
   selector: 'app-workbench',
@@ -42,8 +56,12 @@ export class WorkbenchComponent implements OnInit {
   selectedDetail: NoteDetail | null = null;
 
   searchQuery = '';
-  searchMode: 'text' | 'semantic' | 'both' = 'both';
-  searchHits: { noteId: string; title: string }[] = [];
+  /** Полнотекст + ILIKE на API (по умолчанию включён, вместе с смыслом — режим «оба»). */
+  searchText = true;
+  /** Векторный поиск на API (по умолчанию включён). */
+  searchSemantic = true;
+  /** null — фильтр поиска выключен; иначе в дереве только заметки с этими id. */
+  searchMatchIds: Set<string> | null = null;
   private readonly search$ = new Subject<string>();
 
   modalOpen = false;
@@ -57,16 +75,78 @@ export class WorkbenchComponent implements OnInit {
   deleteConfirmId: string | null = null;
 
   ngOnInit(): void {
-    this.showBodyPreview = localStorage.getItem(LS_PREVIEW) === '1';
+    this.loadWorkbenchPrefs();
     this.search$
-      .pipe(debounceTime(300), distinctUntilChanged())
-      .subscribe((q) => this.runSearch(q));
+      .pipe(
+        debounceTime(SEARCH_DEBOUNCE_MS),
+        distinctUntilChanged(),
+        switchMap((q) => this.searchMatchState$(q)),
+      )
+      .subscribe(({ matchedIds }) => {
+        this.searchMatchIds = matchedIds;
+        this.rebuildTree();
+      });
     this.reload();
+  }
+
+  private loadWorkbenchPrefs(): void {
+    const raw = localStorage.getItem(LS_WORKBENCH_UI);
+    if (raw) {
+      try {
+        const o = JSON.parse(raw) as Partial<WorkbenchUiPrefs>;
+        if (o.viewMode === 'by_group' || o.viewMode === 'by_tag' || o.viewMode === 'flat') {
+          this.viewMode = o.viewMode;
+        }
+        if (o.sortField === 'created_at' || o.sortField === 'due_at') {
+          this.sortField = o.sortField;
+        }
+        if (o.sortOrder === 'asc' || o.sortOrder === 'desc') {
+          this.sortOrder = o.sortOrder;
+        }
+        if (typeof o.onlyTodo === 'boolean') {
+          this.onlyTodo = o.onlyTodo;
+        }
+        if (typeof o.showBodyPreview === 'boolean') {
+          this.showBodyPreview = o.showBodyPreview;
+        }
+        if (typeof o.searchText === 'boolean') {
+          this.searchText = o.searchText;
+        }
+        if (typeof o.searchSemantic === 'boolean') {
+          this.searchSemantic = o.searchSemantic;
+        }
+        this.syncLegacyPreviewKey();
+        return;
+      } catch {
+        /* битый JSON — пересоздаём настройки */
+      }
+    }
+    this.showBodyPreview = localStorage.getItem(LS_PREVIEW) === '1';
+    this.saveWorkbenchPrefs();
+  }
+
+  private saveWorkbenchPrefs(): void {
+    const prefs: WorkbenchUiPrefs = {
+      viewMode: this.viewMode,
+      sortField: this.sortField,
+      sortOrder: this.sortOrder,
+      onlyTodo: this.onlyTodo,
+      showBodyPreview: this.showBodyPreview,
+      searchText: this.searchText,
+      searchSemantic: this.searchSemantic,
+    };
+    localStorage.setItem(LS_WORKBENCH_UI, JSON.stringify(prefs));
+    this.syncLegacyPreviewKey();
+  }
+
+  /** Старый ключ читали до миграции; дублируем запись на случай внешних ссылок. */
+  private syncLegacyPreviewKey(): void {
+    localStorage.setItem(LS_PREVIEW, this.showBodyPreview ? '1' : '0');
   }
 
   togglePreview(checked: boolean): void {
     this.showBodyPreview = checked;
-    localStorage.setItem(LS_PREVIEW, checked ? '1' : '0');
+    this.saveWorkbenchPrefs();
   }
 
   reload(): void {
@@ -95,21 +175,26 @@ export class WorkbenchComponent implements OnInit {
   }
 
   onViewSortChange(): void {
+    this.saveWorkbenchPrefs();
     this.api.listNotes(this.viewMode, this.sortField, this.sortOrder).subscribe((n) => this.applyNotes(n));
   }
 
   onOnlyTodoChange(): void {
+    this.saveWorkbenchPrefs();
     this.api.listNotes(this.viewMode, this.sortField, this.sortOrder).subscribe((n) => this.applyNotes(n));
   }
 
   private rebuildTree(): void {
+    const noteSource = this.filteredNotesForSearch();
+
     if (this.viewMode === 'flat') {
-      this.tree = this.notes.map((n) => this.noteNode(n));
+      this.tree = noteSource.map((n) => this.noteNode(n));
+      this.syncSelectionWithVisibleNotes(noteSource);
       return;
     }
     if (this.viewMode === 'by_tag') {
       const map = new Map<string, NoteSummary[]>();
-      for (const n of this.notes) {
+      for (const n of noteSource) {
         const key =
           n.tagNames.length > 0 ? [...n.tagNames].sort((a, b) => a.localeCompare(b))[0] : '(без тега)';
         if (!map.has(key)) map.set(key, []);
@@ -123,22 +208,58 @@ export class WorkbenchComponent implements OnInit {
         preview: '',
         children: map.get(k)!.map((n) => this.noteNode(n)),
       }));
+      this.syncSelectionWithVisibleNotes(noteSource);
       return;
     }
-    const root = this.buildGroupBranch(this.groups, this.notes);
-    const ungrouped = this.notes
-      .filter((n) => !n.groupId)
-      .map((n) => this.noteNode(n));
+    let root = this.buildGroupBranch(this.groups, noteSource);
+    const ungrouped = noteSource.filter((n) => !n.groupId).map((n) => this.noteNode(n));
     if (ungrouped.length > 0) {
-      root.push({
-        kind: 'group',
-        id: '__ungrouped__',
-        title: 'Без группы',
-        preview: '',
-        children: ungrouped,
-      });
+      root = [
+        ...root,
+        {
+          kind: 'group',
+          id: '__ungrouped__',
+          title: 'Без группы',
+          preview: '',
+          children: ungrouped,
+        },
+      ];
+    }
+    if (this.searchMatchIds !== null) {
+      root = this.pruneEmptyGroups(root);
     }
     this.tree = root;
+    this.syncSelectionWithVisibleNotes(noteSource);
+  }
+
+  private filteredNotesForSearch(): NoteSummary[] {
+    if (this.searchMatchIds === null) {
+      return this.notes;
+    }
+    return this.notes.filter((n) => this.searchMatchIds!.has(n.id));
+  }
+
+  /** Убирает пустые группы при активном поиске. */
+  private pruneEmptyGroups(nodes: TreeNode[]): TreeNode[] {
+    const out: TreeNode[] = [];
+    for (const n of nodes) {
+      if (n.kind === 'note') {
+        out.push(n);
+      } else {
+        const kids = this.pruneEmptyGroups(n.children);
+        if (kids.length > 0) {
+          out.push({ ...n, children: kids });
+        }
+      }
+    }
+    return out;
+  }
+
+  private syncSelectionWithVisibleNotes(visible: NoteSummary[]): void {
+    if (this.selectedId && !visible.find((n) => n.id === this.selectedId)) {
+      this.selectedId = null;
+      this.selectedDetail = null;
+    }
   }
 
   private buildGroupBranch(gs: GroupDto[], allNotes: NoteSummary[]): TreeNode[] {
@@ -169,31 +290,57 @@ export class WorkbenchComponent implements OnInit {
     };
   }
 
-  onSearchInput(value: string): void {
-    this.searchQuery = value;
+  /** Каждое изменение строки поиска — в поток с debounce (без ожидания Enter). */
+  onSearchQueryChange(value: string): void {
     this.search$.next(value.trim());
   }
 
+  /** Немедленный поиск (смена чекбоксов «Текст» / «Смысл»). */
   runSearch(q: string): void {
-    if (!q) {
-      this.searchHits = [];
-      return;
-    }
-    this.api.search(q, this.searchMode).subscribe((hits) => {
-      this.searchHits = hits.map((h) => ({ noteId: h.noteId, title: h.title }));
+    this.searchMatchState$(q).subscribe(({ matchedIds }) => {
+      this.searchMatchIds = matchedIds;
+      this.rebuildTree();
     });
+  }
+
+  private searchMatchState$(q: string): Observable<{ matchedIds: Set<string> | null }> {
+    const trimmed = q.trim();
+    if (!trimmed) {
+      return of({ matchedIds: null });
+    }
+    const mode = this.searchModeParam();
+    if (mode === null) {
+      return of({ matchedIds: new Set<string>() });
+    }
+    return this.api.search(trimmed, mode).pipe(
+      map((hits) => ({
+        matchedIds: new Set<string>(hits.map((h) => h.noteId)),
+      })),
+    );
+  }
+
+  /** Режим для GET /api/search: оба выключены — не искать. */
+  private searchModeParam(): 'text' | 'semantic' | 'both' | null {
+    if (this.searchText && this.searchSemantic) {
+      return 'both';
+    }
+    if (this.searchText) {
+      return 'text';
+    }
+    if (this.searchSemantic) {
+      return 'semantic';
+    }
+    return null;
+  }
+
+  onSearchOptionsChange(): void {
+    this.saveWorkbenchPrefs();
+    this.runSearch(this.searchQuery.trim());
   }
 
   selectNote(id: string): void {
     this.selectedId = id;
     this.api.getNote(id).subscribe((d) => (this.selectedDetail = d));
-    this.searchHits = [];
-  }
-
-  pickSearchHit(noteId: string): void {
-    this.selectNote(noteId);
-    this.searchQuery = '';
-    this.searchHits = [];
   }
 
   openAddModal(): void {

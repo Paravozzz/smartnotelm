@@ -4,24 +4,32 @@
       <input
         type="search"
         class="search-input"
+        name="workbenchSearchQuery"
         placeholder="Поиск по заметкам…"
-        [value]="searchQuery"
-        (input)="onSearchInput($any($event.target).value)"
+        [(ngModel)]="searchQuery"
+        (ngModelChange)="onSearchQueryChange($event)"
+        (keydown.enter)="$event.preventDefault()"
       />
-      <select [(ngModel)]="searchMode" (ngModelChange)="runSearch(searchQuery.trim())">
-        <option value="text">Текст</option>
-        <option value="semantic">Смысл</option>
-        <option value="both">Оба</option>
-      </select>
-      @if (searchHits.length > 0) {
-        <ul class="search-hits">
-          @for (h of searchHits; track h.noteId) {
-            <li>
-              <button type="button" (click)="pickSearchHit(h.noteId)">{{ h.title }}</button>
-            </li>
-          }
-        </ul>
-      }
+      <div class="search-options">
+        <label class="search-opt">
+          <input
+            type="checkbox"
+            name="workbenchSearchText"
+            [(ngModel)]="searchText"
+            (ngModelChange)="onSearchOptionsChange()"
+          />
+          Текст
+        </label>
+        <label class="search-opt">
+          <input
+            type="checkbox"
+            name="workbenchSearchSemantic"
+            [(ngModel)]="searchSemantic"
+            (ngModelChange)="onSearchOptionsChange()"
+          />
+          Смысл
+        </label>
+      </div>
     </div>
     <button type="button" class="primary" (click)="openAddModal()">Добавить заметку</button>
   </header>
